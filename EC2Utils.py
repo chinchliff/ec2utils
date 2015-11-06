@@ -4,7 +4,7 @@ import boto3, time, sys
 from boto3.exceptions import ResourceLoadException
 
 class SpotInstanceManager():
-    def __init__():
+    def __init__(self):
         self.timeout = 300 # seconds
         self.dry_run = False
         self.client = boto3.client('ec2')
@@ -13,11 +13,11 @@ class SpotInstanceManager():
     def get_instance_id_for_request(self, request_id):
         instance_id = None
         n = 0
-        while instance_id == None and n < timeout:
+        while instance_id == None and n < self.timeout:
             if n % 3 == 0:
                 sys.stdout.write('\rwaiting for instance to be created' + ('.' * (n/3)))
                 sys.stdout.flush()
-            d = self.client.describe_spot_instance_requests(DryRun=dry_run, \
+            d = self.client.describe_spot_instance_requests(DryRun=self.dry_run, \
                     SpotInstanceRequestIds=[request_id,])['SpotInstanceRequests'][0]
             if 'InstanceId' in d:
                 instance_id = d['InstanceId']
@@ -25,7 +25,7 @@ class SpotInstanceManager():
             time.sleep(1)
         print('')
     
-        if n >= timeout:
+        if n >= self.timeout:
             print('\nTimed out waiting for instance to be created.\n' +
                   'IMPORTANT: instance will probably still be created ' +
                   'and may need to be canceled manually.')
@@ -34,10 +34,10 @@ class SpotInstanceManager():
         return instance_id
 
 
-    def get_ip_address_for_instance(self, instance):
+    def get_ip_address(self, instance):
         n = 0
         start = time.time()
-        while instance.state['Name'] != 'running' and n < timeout:
+        while instance.state['Name'] != 'running' and n < self.timeout:
             if n % 3 == 0:
                 sys.stdout.write('\rwaiting for instance to initialize' + ('.' * (n/3)))
                 sys.stdout.flush()
@@ -46,7 +46,7 @@ class SpotInstanceManager():
             time.sleep(1)
         print('')
 
-        if n >= timeout and instance.public_ip_address is None:
+        if n >= self.timeout and instance.public_ip_address is None:
             print('\nTimed out waiting for instance to initialize.\n' +
                   'IMPORTANT: Instance may still be initializing but ' +
                   'has NOT been terminated.')
@@ -63,7 +63,7 @@ class SpotInstanceManager():
 
         try:
             r = self.client.request_spot_instances( 
-                DryRun=dry_run, 
+                DryRun=self.dry_run, 
                 SpotPrice=price, 
                 InstanceCount=instance_count, 
                 LaunchSpecification=spec)
@@ -71,10 +71,10 @@ class SpotInstanceManager():
             request_id = r['SpotInstanceRequests'][0]['SpotInstanceRequestId']
             print('spot instance request submitted. id: ' + request_id)
 
-            instance = self.ec2.Instance(get_instance_id(request_id))
+            instance = self.ec2.Instance(self.get_instance_id_for_request(request_id))
             print('instance created. id: ' + instance.instance_id)
 
-            public_ip = get_ip_address(instance)
+            public_ip = self.get_ip_address(instance)
             print('public ip address: ' + str(public_ip))
 
             return instance
@@ -83,12 +83,12 @@ class SpotInstanceManager():
             self.client.cancel_spot_instance_requests(SpotInstanceRequestIds=[request_id,])
             print('\nCaught exception.\n' + 
                   'Making final attempt to terminate any spawned instances, do not interrupt!')
-            instance_id = get_instance_id(request_id)
+            instance_id = self.get_instance_id_for_request(request_id)
             if instance_id is not None:
                 self.client.terminate_instances(InstanceIds=[instance_id,])
 
     def init_cuda_instance(self, price='3.5', instance_count=1, callback=None):
-        instance = init_spot_instance(price, instance_count, 
+        instance = self.init_spot_instance(price, instance_count, 
             ami_id = 'ami-79cd0e3d', 
             key_name = 'cuda', 
             security_groups = ['ui-access','ssh'], 
@@ -113,5 +113,5 @@ if __name__ == '__main__':
     instance = manager.init_cuda_instance()
     manager.cancel_requests([instance.spot_instance_request_id,])
     print('Spot request ' + instance.spot_instance_request_id + ' cancelled.')
-    manager.terminate_instances([instance.instance_id,])
-    print('Instance ' + instance.instance_id + ' terminated.')
+#    manager.terminate_instances([instance.instance_id,])
+#    print('Instance ' + instance.instance_id + ' terminated.')
